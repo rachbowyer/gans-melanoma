@@ -7,12 +7,12 @@ import torch
 import numpy as np
 import re
 
-dataset_path = "Datasets/MelanomaDetection/"
+dataset_path = "../Datasets/MelanomaDetection/"
 unlabelled_dataset_path = dataset_path + "unlabeled"
 labelled_dataset_path = dataset_path + "labeled"
 
 
-def arrayToDictionary(array):
+def array_to_dictionary(array):
     return {k: v for k, v in enumerate(array)}
 
 
@@ -33,7 +33,7 @@ class MelanomaDataset(Dataset):
         self.dir_path = dir_path
         self.transform = transform
         file_list = filter(lambda e: e != ".DS_Store", os.listdir(dir_path))
-        self.file_list = arrayToDictionary(file_list)
+        self.file_list = array_to_dictionary(file_list)
         self.len = len(self.file_list)
 
     def __len__(self):

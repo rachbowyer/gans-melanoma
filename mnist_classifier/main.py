@@ -10,7 +10,7 @@ from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 from torch import nn, optim
 import numpy as np
-data_set_path = 'Datasets'
+data_set_path = '../Datasets'
 
 
 def data_loader(batch_size):
@@ -125,6 +125,7 @@ def train(model, criterion, train_loader, test_loader, lr, epochs, momentum):
             # zeros all the gradients of the weights
             optimizer.zero_grad()
 
+            print(images)
             output = model(images)
             loss = criterion(output, labels)
 
@@ -212,7 +213,7 @@ def main():
     torch.manual_seed(12321)
 
     # Hyper parameters
-    batch_size = 32
+    batch_size = 1
     epochs = 20
     lr = 0.003
     momentum = 0.9
