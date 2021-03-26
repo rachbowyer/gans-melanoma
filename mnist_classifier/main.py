@@ -125,7 +125,6 @@ def train(model, criterion, train_loader, test_loader, lr, epochs, momentum):
             # zeros all the gradients of the weights
             optimizer.zero_grad()
 
-            print(images)
             output = model(images)
             loss = criterion(output, labels)
 
@@ -213,7 +212,7 @@ def main():
     torch.manual_seed(12321)
 
     # Hyper parameters
-    batch_size = 1
+    batch_size = 21
     epochs = 20
     lr = 0.003
     momentum = 0.9
