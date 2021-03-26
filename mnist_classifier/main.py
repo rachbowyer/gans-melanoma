@@ -7,10 +7,18 @@
 
 import torch
 from torchvision import datasets, transforms
+from torch.utils import data
 import matplotlib.pyplot as plt
 from torch import nn, optim
 import numpy as np
 data_set_path = '../Datasets'
+
+
+def get_splits(dataset, percentage_train):
+    len_train_set = len(dataset)
+    train_set = int(len_train_set*percentage_train)
+    val_set = len_train_set - train_set
+    return train_set, val_set
 
 
 def data_loader(batch_size):
@@ -34,6 +42,9 @@ def data_loader(batch_size):
     train_set = datasets.MNIST(data_set_path, download=False, train=True, transform=transform)
     # Trainset contains targets - a vector of 60,000 values and data [60000, 28, 28]
 
+    train_set_len, val_set_len = get_splits(train_set, 0.9)
+    train_set, val_set = data.random_split(train_set, [train_set_len, val_set_len])
+
     test_set = datasets.MNIST(data_set_path, download=False, train=False, transform=transform)
     # Testset contains targets - a vector of 10,000 values and data [10000, 28, 28]
 
@@ -47,9 +58,10 @@ def data_loader(batch_size):
     # The loaders support SGD by batching and randomising the order of batches
 
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
-    return train_loader, test_loader
+    return train_loader, val_loader, test_loader
 
 
 def create_model():
@@ -109,18 +121,19 @@ def validate(model, test_loader):
     return correct / total
 
 
-def train(model, criterion, train_loader, test_loader, lr, epochs, momentum):
+def train(model, criterion, train_loader, val_loader, lr, epochs, momentum):
     # Each iteration of the loader serves up a pair (images, labels)
     # The images are [64, 1, 28, 28] and the labels [64]
     # The batch size is 64 images and the images are 28 x 28.
     losses = []
-    test_errors = []
+    val_errors = []
 
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     for e in range(epochs):
         model.train()
         running_loss = 0
+        print("\nEpocs: ", e + 1)
         for images, labels in train_loader:
             # zeros all the gradients of the weights
             optimizer.zero_grad()
@@ -137,15 +150,14 @@ def train(model, criterion, train_loader, test_loader, lr, epochs, momentum):
             running_loss += loss.item()
 
         loss = running_loss / len(train_loader)
-        test_error = validate(model, test_loader)
+        val_error = validate(model, val_loader)
 
-        print("\nEpocs: ", e + 1)
         print("Loss: ", loss)
-        print("Test error: ", test_error)
+        print("Validation error: ", val_error)
         losses.append(loss)
-        test_errors.append(test_error)
+        val_errors.append(val_error)
 
-    return losses, test_errors
+    return losses, val_errors
 
 
 def get_misclassified(model, test_loader):
@@ -199,7 +211,7 @@ def show_loss_errors(losses, test_errors):
     ax1.xaxis.set_visible(False)
 
     ax2.plot(x_axis, test_errors, 'o-')
-    ax2.set_ylabel('Test accuracy')
+    ax2.set_ylabel('Validation accuracy')
 
     ax2.set_xlabel('Epocs')
     plt.xticks(x_axis)
@@ -212,21 +224,28 @@ def main():
     torch.manual_seed(12321)
 
     # Hyper parameters
-    batch_size = 21
+    batch_size = 32
     epochs = 20
     lr = 0.003
     momentum = 0.9
 
-    train_loader, test_loader = data_loader(batch_size)
+    train_loader, val_loader, test_loader = data_loader(batch_size)
     criterion = loss_function()
 
-    # Train and validate model
+    # Train model
     model = create_model()
-    losses, test_error = train(model, criterion, train_loader, test_loader, lr, epochs, momentum)
-    show_loss_errors(losses, test_error)
+    losses, val_error = train(model, criterion, train_loader, val_loader, lr, epochs, momentum)
+    show_loss_errors(losses, val_error)
 
-    print("Lowest test error:", max(test_error))
-    print("Number of epocs:", np.argmax(test_error) + 1)
+    opt_epochs = np.argmax(val_error) + 1
+    print("Lowest val error: ", max(val_error))
+    print("Number of epocs: ", opt_epochs)
+
+    # Test model
+    model = create_model()
+    train(model, criterion, train_loader, val_loader, lr, opt_epochs, momentum)
+    test_error = validate(model, test_loader)
+    print("Test error: ", test_error)
 
     # Show misclassified
     # images, labels, probs = get_misclassified(model, test_loader)

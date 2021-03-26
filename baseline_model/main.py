@@ -1,7 +1,8 @@
 import os
 from torchvision import transforms, models
 from torch.utils.data import Dataset, DataLoader
-import matplotlib.pyplot as plt
+from torch.utils import data
+# import matplotlib.pyplot as plt
 from operator import itemgetter
 import torch
 from torch import nn, optim
@@ -16,14 +17,24 @@ train_dataset_path = dataset_path + "labeled"
 test_dataset_path = dataset_path + "test"
 
 
+def get_splits(dataset, percentage_train):
+    len_train_set = len(dataset)
+    train_set = int(len_train_set*percentage_train)
+    val_set = len_train_set - train_set
+    return train_set, val_set
+
+
 def data_loader(batch_size, train_transform, test_transform):
     train_dataset = MelanomaDataset(extract_label, train_dataset_path, transform=train_transform)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-
+    train_set_len, val_set_len = get_splits(train_dataset, 0.7)
+    train_dataset, val_dataset = data.random_split(train_dataset, [train_set_len, val_set_len])
     test_dataset = MelanomaDataset(extract_label, test_dataset_path, transform=test_transform)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    return train_loader, test_loader
+    return train_loader, val_loader, test_loader
 
 
 def array_to_dictionary(array):
@@ -89,11 +100,12 @@ def validate(model, test_loader):
     return correct / total, correct, total
 
 
-def train(model, criterion, train_loader, test_loader, lr, epochs, momentum):
+def train(model, criterion, train_loader, val_loader, test_loader, lr, epochs, momentum):
     # Each iteration of the loader serves up a pair (images, labels)
     # The images are [64, 1, 28, 28] and the labels [64]
     # The batch size is 64 images and the images are 28 x 28.
     losses = []
+    val_accuracies = []
     test_accuracies = []
 
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
@@ -119,13 +131,16 @@ def train(model, criterion, train_loader, test_loader, lr, epochs, momentum):
             running_loss += loss.item()
 
         loss = running_loss / len(train_loader)
-        test_accuracy, test_correct, test_total = validate(model, test_loader)
+        val_accuracy, _, _ = validate(model, val_loader)
+        test_accuracy, _, _ = validate(model, test_loader)
         print("Loss: ", loss)
-        print("Test accuracy:", test_accuracy, ", Correct: ", test_correct, ", Total:", test_total)
+        print("Val accuracy:", val_accuracy)
+        print("Test accuracy:", test_accuracy)
         losses.append(loss)
+        val_accuracies.append(val_accuracy)
         test_accuracies.append(test_accuracy)
 
-    return losses, test_accuracies
+    return losses, val_accuracies, test_accuracies
 
 
 def create_basic_model():
@@ -195,22 +210,25 @@ def run_basic_model(batch_size):
     np.random.seed(0)
     torch.manual_seed(12321)
 
-    lr = 0.001
-    momentum = 0
-    epochs = 10
+    lr = 0.0003
+    momentum = 0.9
+    epochs = 50
 
+    # Train model
     transform = transforms.Compose([transforms.ToTensor(), scale_image])
-    train_loader, test_loader = data_loader(batch_size, transform, transform)
+    train_loader, val_loader, test_loader = data_loader(batch_size, transform, transform)
     criterion = nn.BCELoss()
     model = create_basic_model()
 
-    _, test_error = train(model, criterion, train_loader, test_loader, lr, epochs, momentum)
+    _, val_errors, test_errors = train(model, criterion, train_loader, val_loader, test_loader, lr, epochs, momentum)
 
+    opt_epochs = np.argmax(val_errors)
     print()
-    print("Highest test accuracy:", max(test_error))
-    print("Number of epocs:", np.argmax(test_error) + 1)
+    print("Number of epocs:", opt_epochs+1)
+    print("Test accuracy:", test_errors[opt_epochs])
 
-    # Highest test accuracy: 72%
+
+    # Highest test accuracy: 73%
     # Continuing to train wil take the train accuracy up to 100%, but the test accuracy
     # does not get any better
 
@@ -232,26 +250,27 @@ def run_augmented_model(batch_size):
     np.random.seed(0)
     torch.manual_seed(12321)
 
-    lr = 0.001
-    momentum = 0.2
-    epochs = 120
+    lr = 0.0003
+    momentum = 0.9
+    epochs = 100
 
     base_transform = transforms.Compose([transforms.ToTensor(), scale_image])
     augmentation = augmentation_transforms()
     preprocess = transforms.Compose([base_transform, augmentation])
 
-    train_loader, test_loader = data_loader(batch_size, preprocess, base_transform)
+    train_loader, val_loader, test_loader = data_loader(batch_size, preprocess, base_transform)
 
     criterion = nn.BCELoss()
     model = create_basic_model()
 
-    _, test_error = train(model, criterion, train_loader, test_loader, lr, epochs, momentum)
+    _, val_errors, test_errors = train(model, criterion, train_loader, val_loader, test_loader, lr, epochs, momentum)
 
+    opt_epochs = np.argmax(val_errors)
     print()
-    print("Highest test accuracy:", max(test_error))
-    print("Number of epocs:", np.argmax(test_error) + 1)
+    print("Number of epocs:", opt_epochs+1)
+    print("Test accuracy:", test_errors[opt_epochs])
 
-    # Highest test accuracy: 76%
+    # Highest test accuracy: 75%
     # Also a lot of sensitivity to initial (ie seed). Some seeds, will
     # fail to train
     # Takes a lot longer to train - but a 4% increase in accuracy
@@ -273,27 +292,30 @@ def run_pretrained_model(batch_size):
     augmentation = augmentation_transforms()
     preprocess = transforms.Compose([base, augmentation])
 
-    train_loader, test_loader = data_loader(batch_size, preprocess, base)
+    train_loader, val_loader, test_loader = data_loader(batch_size, preprocess, base)
 
     criterion = nn.BCELoss()
     model = create_trained_model()
 
-    lr = 0.001
+    lr = 0.0003
     momentum = 0.9
-    epochs = 3
+    epochs = 10
 
-    _, test_error = train(model, criterion, train_loader, test_loader, lr, epochs, momentum)
+    _, val_errors, test_errors = train(model, criterion, train_loader, val_loader, test_loader, lr, epochs, momentum)
 
+    opt_epochs = np.argmax(val_errors)
     print()
-    print("Highest test accuracy:", max(test_error))
-    print("Number of epocs:", np.argmax(test_error) + 1)
+    print("Number of epocs:", opt_epochs+1)
+    print("Test accuracy:", test_errors[opt_epochs])
+
+    # Highest test accuracy: 76%
 
 
 def main():
     batch_size = 32
 
-    run_basic_model(batch_size)
-    run_augmented_model(batch_size)
+    # run_basic_model(batch_size)
+    # run_augmented_model(batch_size)
     run_pretrained_model(batch_size)
 
 
