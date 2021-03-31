@@ -183,34 +183,36 @@ def train(optimizer, model, criterion, train_loader):
 
 
 def gen_images(test_loader, epoch, model, sample):
+    model.eval()
 
-    # obtain one batch of test images
-    data_iter = iter(test_loader)
-    images, _ = data_iter.next()
-    batch_size = images.size(0)
+    with torch.no_grad():
+        # obtain one batch of test images
+        data_iter = iter(test_loader)
+        images, _ = data_iter.next()
+        batch_size = images.size(0)
 
-    images_flatten = images.view(images.size(0), -1)
-    # get sample outputs
-    output, _, _ = model(images_flatten)
+        images_flatten = images.view(images.size(0), -1)
+        # get sample outputs
+        output, _, _ = model(images_flatten)
 
-    # output is resized into a batch of images
-    output = output.view(batch_size, 1, 28, 28)
+        # output is resized into a batch of images
+        output = output.view(batch_size, 1, 28, 28)
 
-    gen_image = model.decode(sample)
-    gen_image = gen_image.view(batch_size, 1, 28, 28)
+        gen_image = model.decode(sample)
+        gen_image = gen_image.view(batch_size, 1, 28, 28)
 
-    # plot the first ten input images, then reconstructed images, then generated images
-    fig, axes = plt.subplots(nrows=3, ncols=10, sharex=True, sharey=True)
+        # plot the first ten input images, then reconstructed images, then generated images
+        fig, axes = plt.subplots(nrows=3, ncols=10, sharex=True, sharey=True)
 
-    # input images on top row, reconstructions on bottom
-    for images, row, title in zip([images, output, gen_image], axes, ['Original', 'Reconstructed', 'Generated']):
-        row[0].set_title('Epoch: ' + str(epoch) + ' - ' + title)
-        for img, ax in zip(images, row):
-            img = img.detach().numpy()
-            ax.imshow(np.squeeze(img), cmap='gray')
+        # input images on top row, reconstructions on bottom
+        for images, row, title in zip([images, output, gen_image], axes, ['Original', 'Reconstructed', 'Generated']):
+            row[0].set_title('Epoch: ' + str(epoch) + ' - ' + title)
+            for img, ax in zip(images, row):
+                img = img.detach().numpy()
+                ax.imshow(np.squeeze(img), cmap='gray')
 
-            ax.get_xaxis().set_visible(False)
-            ax.get_yaxis().set_visible(False)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
 
 
 def main():
