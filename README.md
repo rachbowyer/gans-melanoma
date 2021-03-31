@@ -10,4 +10,5 @@ For more information see my [website](https://www.bowyer.info/copy-of-henderson)
 1. [MNIST classifier](https://github.com/rachbowyer/gans-melanoma/blob/main/mnist_classifier/mnist_classifier.ipynb)
 2. [Melanoma image loader](https://github.com/rachbowyer/gans-melanoma/blob/main/image_pipeline/image_pipeline.ipynb)
 3. [Melanoma classifier](https://github.com/rachbowyer/gans-melanoma/blob/main/baseline_model/baseline_models.ipynb)
+4. [MNIST variational autoencoder](https://github.com/rachbowyer/gans-melanoma/blob/main/mnist_var_autoencoder/mnist_var_autoencoder.ipynb)
 
