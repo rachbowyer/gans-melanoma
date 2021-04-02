@@ -100,6 +100,7 @@ def create_vae():
             x = self.reparameterize(mu, log_var)
             x = self.decode(x)
             return x, mu, log_var
+
     return VAE()
 
 
