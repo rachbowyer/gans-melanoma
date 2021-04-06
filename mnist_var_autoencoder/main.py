@@ -210,7 +210,7 @@ def gen_images(test_loader, epoch, model, sample):
             row[0].set_title('Epoch: ' + str(epoch) + ' - ' + title)
             for img, ax in zip(images, row):
                 img = img.detach().numpy()
-                ax.imshow(np.squeeze(img), cmap='gray')
+                ax.imshow(np.squeeze(img), cmap='gray_r')
 
                 ax.get_xaxis().set_visible(False)
                 ax.get_yaxis().set_visible(False)
