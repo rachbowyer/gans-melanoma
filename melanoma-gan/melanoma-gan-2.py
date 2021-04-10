@@ -7,7 +7,6 @@ import random
 import re
 import torch
 from torch import nn, optim
-import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torch.utils import data
 from torchvision import transforms
@@ -20,7 +19,7 @@ test_dataset_path = dataset_path + "test"
 unlabeled_dataset_path = dataset_path + "unlabeled"
 
 
-z_dims = 100
+z_dims = 20
 image_size = 32 * 32
 
 
@@ -126,26 +125,26 @@ def augmentation_transforms():
                                rotation])
 
 
-def create_simple_generator_model():
-    class Generator(nn.Module):
-        def __init__(self):
-            super(Generator, self).__init__()
-            # 100
-            self.fc1 = nn.Linear(z_dims, 400)
-            # 400
-            self.fc2 = nn.Linear(400, 3 * image_size)
-            # 3 * 32 * 32
-
-        def forward(self, x):
-            x = x.flatten(1, -1)
-            x = self.fc1(x)
-            x = F.relu(x)
-            x = self.fc2(x)
-            x = torch.sigmoid(x)
-            x = x.view(x.size(0), 3, 32, 32)
-            return x
-
-    return Generator()
+# def create_simple_generator_model():
+#     class Generator(nn.Module):
+#         def __init__(self):
+#             super(Generator, self).__init__()
+#             # 100
+#             self.fc1 = nn.Linear(z_dims, 400)
+#             # 400
+#             self.fc2 = nn.Linear(400, 3 * image_size)
+#             # 3 * 32 * 32
+#
+#         def forward(self, x):
+#             x = x.flatten(1, -1)
+#             x = self.fc1(x)
+#             x = F.relu(x)
+#             x = self.fc2(x)
+#             x = torch.sigmoid(x)
+#             x = x.view(x.size(0), 3, 32, 32)
+#             return x
+#
+#     return Generator()
 
 
 def create_generator_model():
@@ -186,33 +185,33 @@ def create_generator_model():
     return Generator()
 
 
-def create_simple_discriminator_model():
-    # falsification_neuron - 1 means real, 0 means a fake
-    # prognosis_neuron - 1 means real, 0 means fake
-    class Discriminator(nn.Module):
-        def __init__(self):
-            super(Discriminator, self).__init__()
-            self.fc1 = nn.Linear(3 * image_size, 400)
-            self.falsification_neuron = nn.Linear(400, 1)
-            self.prognosis_neuron = nn.Linear(400, 1)
-
-        def forward(self, x):
-            x = x.flatten(1, -1)
-            x = self.fc1(x)
-            x = F.relu(x)
-            falsification = self.falsification_neuron(x)
-            falsification = torch.sigmoid(falsification)
-            prognosis = self.prognosis_neuron(x)
-            prognosis = torch.sigmoid(prognosis)
-
-            return falsification, prognosis
-
-    return Discriminator()
+# def create_simple_discriminator_model():
+#     # falsification_neuron - 1 means real, 0 means a fake
+#     # prognosis_neuron - 1 means real, 0 means fake
+#     class Discriminator(nn.Module):
+#         def __init__(self):
+#             super(Discriminator, self).__init__()
+#             self.fc1 = nn.Linear(3 * image_size, 400)
+#             self.falsification_neuron = nn.Linear(400, 1)
+#             self.prognosis_neuron = nn.Linear(400, 1)
+#
+#         def forward(self, x):
+#             x = x.flatten(1, -1)
+#             x = self.fc1(x)
+#             x = F.relu(x)
+#             falsification = self.falsification_neuron(x)
+#             falsification = torch.sigmoid(falsification)
+#             prognosis = self.prognosis_neuron(x)
+#             prognosis = torch.sigmoid(prognosis)
+#
+#             return falsification, prognosis
+#
+#     return Discriminator()
 
 
 def create_discriminator_model():
-    # 0 means a fake
-    # 1 means real
+    # Neuron 0 means negative and real
+    # Neuron 1 means positive and real
 
     class Model(nn.Module):
         def __init__(self):
@@ -234,10 +233,9 @@ def create_discriminator_model():
             self.bn4 = nn.BatchNorm2d(512)
             self.reLU4 = nn.LeakyReLU(0.2, inplace=True)
             # 512 x (4 x 4)
-            self.falsification_neuron = nn.Conv2d(512, 1, 4, 1, 0)
-            self.prognosis_neuron = nn.Conv2d(512, 1, 4, 1, 0)
-
-            # 1 x (1 x 1)
+            # self.fc = nn.Linear(512 * 4 * 4, 2)
+            self.output_neurons = nn.Conv2d(512, 2, 4, 1, 0)
+            # self.output_neurons = nn.Conv2d(512, 1, 4, 1, 0)
 
         def forward(self, x):
             x = self.cnv1(x)
@@ -252,11 +250,11 @@ def create_discriminator_model():
             x = self.cnv4(x)
             x = self.bn4(x)
             x = self.reLU4(x)
-            falsification = self.falsification_neuron(x)
-            falsification = torch.sigmoid(falsification)
-            prognosis = self.prognosis_neuron(x)
-            prognosis = torch.sigmoid(prognosis)
-            return falsification, prognosis
+            x = self.output_neurons(x)
+            x = x.flatten(1, -1)
+            # x = self.fc(x)
+            # x = torch.sigmoid(x)
+            return x
 
     return Model()
 
@@ -301,21 +299,47 @@ def view_images(epoch, generator, discriminator, sample):
             ax.get_yaxis().set_visible(False)
 
 
-def accuracy(output, wanted):
+def accuracy_fn_labeled(output, wanted):
     with torch.no_grad():
-        predicted = output.numpy() > 0.5
+        predicted = torch.argmax(output.data, 1)
         total = output.size(0)
-        correct = (predicted == wanted.numpy()).sum().item()
+        correct = (predicted == wanted).sum().item()
         return correct / total
 
 
-def model_accuracy(discriminator, a_data_loader):
+def accuracy_fn_fake(output, want_real):
+    # Determine if there is at least a 50% chance that
+    # these are real moles (or at least a 50% chance that they are fake)
+    with torch.no_grad():
+        t = torch.exp(torch.logsumexp(output, dim=1))
+        probability = t / (t+1) if want_real else 1 / (t+1)
+        predicted = probability.numpy() > 0.5
+        total = output.size(0)
+        correct = predicted.sum().item()
+        return correct / total
+
+
+def real_loss(output):
+    lse = torch.logsumexp(output, dim=1)
+    # lse_plus_one = F.softplus(torch.exp(lse))
+    lse_plus_one = torch.log(torch.exp(lse) + 1)
+    return (-lse + lse_plus_one).mean()
+
+
+def fake_loss(output):
+    lse = torch.logsumexp(output, dim=1)
+    # lse_plus_one = F.softplus(torch.exp(lse))
+    lse_plus_one = torch.log(torch.exp(lse) + 1)
+    return lse_plus_one.mean()
+
+
+def model_accuracy(discriminator, a_data_loader, accuracy):
     with torch.no_grad():
         running_accuracy = 0
         for some_data in a_data_loader:
             images, labels = itemgetter('image', 'label')(some_data)
-            _, output = discriminator(images)
-            acc = accuracy(output.squeeze(), labels.float().squeeze())
+            output = discriminator(images)
+            acc = accuracy(output, labels)
             running_accuracy += acc
 
     return running_accuracy / len(a_data_loader)
@@ -323,12 +347,14 @@ def model_accuracy(discriminator, a_data_loader):
 
 def train(sample, epochs, train_loader, unlabeled_loader, val_loader, test_loader,
           generator_optimizer, discriminator_optimizer,
-          generator, discriminator, criterion):
+          generator, discriminator, train_discriminator):
     batches_per_epoch = len(unlabeled_loader)
-    # batches_per_epoch = 10
+    # batches_per_epoch = 2
     print("Batches per epoc: ", batches_per_epoch)
 
     discriminator.train()
+    criterion = nn.CrossEntropyLoss()
+    # criterion = nn.BCELoss()
 
     if generator is not None:
         generator.train()
@@ -342,6 +368,7 @@ def train(sample, epochs, train_loader, unlabeled_loader, val_loader, test_loade
     for epoch in range(epochs):
         print("\nEpoch: ", epoch)
         running_accuracy = 0
+        running_dreal_accuracy = 0
 
         for index in range(batches_per_epoch):
             # Load batches
@@ -357,48 +384,53 @@ def train(sample, epochs, train_loader, unlabeled_loader, val_loader, test_loade
             images, labels = itemgetter('image', 'label')(labeled_data)
 
             # Train discriminator - labeled batch
-            discriminator_optimizer.zero_grad()
-            _, output = discriminator(images)
-            loss = criterion(output.squeeze(), labels.float().squeeze())
-            labeled_accuracy = accuracy(output.squeeze(), labels.float().squeeze())
-            running_accuracy += labeled_accuracy
-            loss.backward()
-            discriminator_optimizer.step()
+            if train_discriminator:
+                discriminator_optimizer.zero_grad()
+                output = discriminator(images)
 
-            print('Epoch: %d, Iteration: %i, Labelled Loss: %.3f' %
-                  (epoch, index, loss.item()))
+                loss = criterion(output, labels)
+
+                labeled_accuracy = accuracy_fn_labeled(output, labels)
+                running_accuracy += labeled_accuracy
+                loss.backward()
+                discriminator_optimizer.step()
+
+                print('Epoch: %d, Iteration: %i, Labelled Loss: %.3f' %
+                      (epoch, index, loss.item()))
 
             # Train discriminator - unlabeled batch
             if generator is not None:
                 unlabeled_batch_size = unlabeled_images.size(0)
-                real_ones = torch.ones(unlabeled_batch_size)
-                fakes = torch.zeros(unlabeled_batch_size)
+                # real_ones = torch.full((unlabeled_batch_size,), 1.0, dtype=torch.float)
+                # fakes = torch.zeros(unlabeled_batch_size)
 
                 # Train discriminator - real batch
                 # Discriminator must mark the real images 1 and the fake images 0
                 discriminator_optimizer.zero_grad()
-                output_real, _ = discriminator(unlabeled_images)
-                loss_real = criterion(output_real.squeeze(), real_ones)
-                d_real_accuracy = accuracy(output_real.squeeze(), real_ones)
+                output_real = discriminator(unlabeled_images)
+
+                loss_real = real_loss(output_real)
+                d_real_accuracy = accuracy_fn_fake(output_real, want_real=True)
+                running_dreal_accuracy += d_real_accuracy
                 loss_real.backward()
 
                 # Train discriminator - fake batch
-                random_noise1 = batch_random_noise(unlabeled_batch_size)
-                fake_images1 = generator(random_noise1)
-                output_fake1, _ = discriminator(fake_images1.detach())
-                loss_fake = criterion(output_fake1.squeeze(), fakes)
-                d_loss_accuracy = accuracy(output_fake1.squeeze(), fakes)
+                random_noise = batch_random_noise(unlabeled_batch_size)
+                fake_images = generator(random_noise)
+                output_fake_1 = discriminator(fake_images.detach())
+                loss_fake = fake_loss(output_fake_1)
+                d_loss_accuracy = accuracy_fn_fake(output_fake_1, want_real=False)
                 loss_fake.backward()
                 discriminator_optimizer.step()
 
                 # Train generator
                 generator_optimizer.zero_grad()
-                output_fake2, _ = discriminator(fake_images1)
+                output_fake_2 = discriminator(fake_images)
 
                 # Generator must cause the discriminator to mark the fake images as real
                 # ie to fool the discriminator
-                generator_loss = criterion(output_fake2.squeeze(), real_ones)
-                gen_accuracy = accuracy(output_fake2.squeeze(), real_ones)
+                generator_loss = real_loss(output_fake_2)
+                gen_accuracy = accuracy_fn_fake(output_fake_2, want_real=True)
                 generator_loss.backward()
                 generator_optimizer.step()
 
@@ -418,13 +450,15 @@ def train(sample, epochs, train_loader, unlabeled_loader, val_loader, test_loade
 
             total_count += 1
         running_accuracy /= batches_per_epoch
-        validation_accuracy = model_accuracy(discriminator, val_loader)
+        running_dreal_accuracy /= batches_per_epoch
+        validation_accuracy = model_accuracy(discriminator, val_loader, accuracy_fn_labeled)
 
         print("End of epoc")
-        print("Training accuracy for epoc: ", running_accuracy)
-        print("Validation accuracy for epoc: ", validation_accuracy)
-        test_accuracy = model_accuracy(discriminator, test_loader)
-        print("Test accuracy: ", test_accuracy)
+        print("Training accuracy in spotting fakes for epoc: ", running_dreal_accuracy)
+        print("Training accuracy in discriminating malignant/benign for epoc: ", running_accuracy)
+        print("Validation accuracy in discriminating malignant/benign for epoc: ", validation_accuracy)
+        test_accuracy = model_accuracy(discriminator, test_loader, accuracy_fn_labeled)
+        print("Test accuracy in discriminating malignant/benign: ", test_accuracy)
 
 
 def main():
@@ -436,39 +470,28 @@ def main():
     batch_size = 128
     sample = batch_random_noise(batch_size)
 
-    # base = transforms.Compose([
-    #         # transforms.Resize(256),
-    #         # transforms.CenterCrop(224),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(
-    #             mean=[0.485, 0.456, 0.406],
-    #             std=[0.229, 0.224, 0.225]
-    #         )])
-
     base = transforms.ToTensor()
-
     augmentation = augmentation_transforms()
     preprocess = transforms.Compose([base, augmentation])
 
     train_loader, unlabeled_loader, val_loader, test_loader \
         = data_loader(batch_size, preprocess, base)
 
-    generator = create_simple_generator_model()
+    generator = create_generator_model()
     generator.apply(weights_init)
 
     discriminator = create_discriminator_model()
     discriminator.apply(weights_init)
-
-    criterion = nn.BCELoss()
 
     generator_optimizer = optim.Adam(generator.parameters(), lr=lr, betas=(beta1, 0.999))
     discriminator_optimizer = optim.Adam(discriminator.parameters(), lr=lr, betas=(beta1, 0.999))
 
     train(sample, epochs, train_loader, unlabeled_loader, val_loader, test_loader,
           generator_optimizer, discriminator_optimizer,
-          generator, discriminator, criterion)
+          generator, discriminator, train_discriminator=True)
 
     gen_images(epochs, 0, generator, sample)
+
     #
     # test_accuracy = model_accuracy(discriminator, test_loader)
     # print("Test accuracy: ", test_accuracy)
