@@ -1,6 +1,6 @@
 # Melanoma
 
-<img src="https://static.wixstatic.com/media/3466eb_5386a95a752947adb0c706a5c0127f4d~mv2.jpg/v1/fill/w_243,h_241,al_c,lg_1,q_80/Melanoma.webp" alt="Picture of a melanoma"/>
+<img src="https://static.wixstatic.com/media/3466eb_b496057483be4464b0e244a7ab2db26e~mv2.jpg/v1/crop/x_0,y_994,w_2400,h_2381/fill/w_287,h_285,al_c,q_80,usm_0.66_1.00_0.01/Microscope.webp" alt="Picture of a melanoma"/>
 
 
 This is my approach to the Manning Live Project, 
