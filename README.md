@@ -13,3 +13,10 @@ For more information see my [website](https://www.bowyer.info/copy-of-henderson)
 4. [MNIST variational autoencoder](https://github.com/rachbowyer/gans-melanoma/blob/main/mnist_var_autoencoder/mnist_var_autoencoder.ipynb)
 5. [MNIST DCGAN](https://github.com/rachbowyer/gans-melanoma/blob/main/mnist_dcgan/mnist_dcgan.ipynb)
 6. [Melanoma SGAN classifier](https://github.com/rachbowyer/gans-melanoma/blob/main/melanoma-gan/melanoma-classifier.ipynb)
+
+
+
+---
+<small>Picture of the microscope courtesy of SFO Museum, San Francisco. Used under the Creative Commons [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0) licence.</small>
+
+
